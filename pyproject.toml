@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "yt2md"
-version = "0.0.4"
+version = "0.0.5"
 description = "A tool to convert YouTube videos to Markdown format."
 authors = ["Michael <x30827pos@gmail.com>"]
 

@@ -125,7 +125,7 @@ Contributions are welcome! Please follow these steps:
 
 ## Authors
 
-- Michael (x30827pos@gmail.com)
+- Michael [x30827pos@gmail.com](mailto:x30827pos@gmail.com)
 
 ## Acknowledgments
 
