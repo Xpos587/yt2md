@@ -20,40 +20,45 @@
 ## Installation
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/xpos587/yt2md.git
    cd yt2md
    ```
 
 2. Install using pip:
+
    ```bash
    pip install aiohttp orjson aiohttp_socks
    ```
 
 3. Alternatively, you can run the installation script:
+
    ```bash
    python install.py
    ```
 
 The script will:
+
 - Install the package in your Python environment.
 - Create a symlink in `/usr/local/bin` for global access (requires sudo).
 
 ## Usage
 
 Basic usage:
+
 ```bash
 yt2md <video_url_or_id> [options]
 ```
 
-### Options:
+### Options
 
-```
+```sh
 positional arguments:
   video_url_or_id        YouTube video URLs or IDs.
 
 optional arguments:
-  -h, --help              Show this help message and exit
+  -h, --help              Show this help message and exit.
   -o, --output            Output file path for Markdown.
   -cp, --clipboard        Copy the output to clipboard.
   -l, --language          Subtitle language code (default is 'ru').
@@ -62,21 +67,25 @@ optional arguments:
 ### Examples
 
 1. Generate Markdown for a specific video:
+
    ```bash
    yt2md HNXcsxO3B94 -o output.md
    ```
 
 2. Specify a subtitle language:
+
    ```bash
    yt2md HNXcsxO3B94 -o output.md -l en-US
    ```
 
 3. Copy output directly to clipboard:
+
    ```bash
    yt2md HNXcsxO3B94 -cp
    ```
 
 4. Generate Markdown without specifying an output file (prints to console):
+
    ```bash
    yt2md HNXcsxO3B94
    ```
@@ -86,6 +95,7 @@ optional arguments:
 To set up the development environment:
 
 1. Create a virtual environment:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
@@ -94,6 +104,7 @@ To set up the development environment:
 2. Install dependencies manually as mentioned above.
 
 3. Install in editable mode if you make changes:
+
    ```bash
    pip install -e .
    ```
