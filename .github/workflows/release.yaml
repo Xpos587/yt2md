@@ -1,4 +1,4 @@
-name: release
+name: Release Workflow
 
 on:
   push:
@@ -9,9 +9,7 @@ on:
       - "[0-9]+.[0-9]+.[0-9]+rc[0-9]+"
 
 env:
-  PACKAGE_NAME: "<PACKAGE_NAME>"
-  OWNER: "<OWNER>"
-  TAP_NAME: "<TAP_NAME>"
+  PACKAGE_NAME: "yt2md"
 
 jobs:
   details:
@@ -21,7 +19,7 @@ jobs:
       suffix: ${{ steps.release.outputs.suffix }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Extract tag and Details
         id: release
@@ -68,41 +66,37 @@ jobs:
           fi
 
   setup_and_build:
-    needs: [details, check_pypi]
+    needs: details
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.12"
 
-      - name: Install Poetry
+      - name: Update version in setup.py
         run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          sed -i "s/version=.*,/version='${{ needs.details.outputs.new_version }}',/" setup.py
 
-      - name: Set project version with Poetry
+      - name: Install build dependencies
         run: |
-          poetry version ${{ needs.details.outputs.new_version }}
+          python -m pip install --upgrade pip
+          pip install build wheel
 
-      - name: Install dependencies
-        run: poetry install --sync --no-interaction
-
-      - name: Build source and wheel distribution
-        run: |
-          poetry build
+      - name: Build package
+        run: python -m build
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
 
   pypi_publish:
     name: Upload release to PyPI
-    needs: [setup_and_build, details]
+    needs: [setup_and_build, check_pypi]
     runs-on: ubuntu-latest
     environment:
       name: release
@@ -110,7 +104,7 @@ jobs:
       id-token: write
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
@@ -126,12 +120,12 @@ jobs:
       contents: write
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
@@ -142,27 +136,3 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create ${{ needs.details.outputs.tag_name }} dist/* --title ${{ needs.details.outputs.tag_name }} --generate-notes
-
-  bump_homebrew_formula:
-    name: Dispatch event to Repo B
-    needs: [details, github_release, pypi_publish]
-    runs-on: ubuntu-latest
-    environment:
-      name: release
-    steps:
-      - name: Dispatch Repository Dispatch event
-        uses: peter-evans/repository-dispatch@v2
-        with:
-          token: ${{ secrets.BREW_TAP_TOKEN }}
-          repository: ${{ env.OWNER }}/{{ env.TAP_NAME }}
-          event-type: "update-formula"
-          client-payload: |-
-            { 
-              "formula_version": "${{env.FORMULA_VERSION}}", 
-              "formula_url": "${{ env.FORMULA_URL }}", 
-              "formula_name": "${{ env.FORMULA_NAME }}"
-            }
-        env:
-          FORMULA_VERSION: ${{ needs.details.outputs.new_version }}
-          FORMULA_NAME: ${{ env.PACKAGE_NAME }}
-          FORMULA_URL: https://github.com/${{env.OWNER}}/${{env.PACKAGE_NAME}}/releases/download/${{ needs.details.outputs.new_version }}/${{env.PACKAGE_NAME}}-${{ needs.details.outputs.new_version }}.tar.gz

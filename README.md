@@ -1,132 +1,141 @@
-# yt2md
+# 🎬 yt2md
 
-`yt2md` is a command-line tool designed to convert YouTube videos into Markdown format. This tool extracts metadata and subtitles from YouTube videos, providing a structured output that is easy to read and use.
+![PyPI](https://img.shields.io/pypi/v/yt2md)
+![Python Version](https://img.shields.io/pypi/pyversions/yt2md)
+![License](https://img.shields.io/github/license/xpos587/yt2md)
 
-## Features
+🚀 YouTube to Obsidian Markdown converter with metadata extraction and timestamped subtitles.
 
-- **Extract Metadata**: Retrieves video title, description, view count, publish date, tags, and duration.
-- **Subtitle Support**: Fetches subtitles in multiple languages based on user preference.
-- **Markdown Conversion**: Outputs all extracted data in a well-structured Markdown file.
-- **Clipboard Functionality**: Optionally copies the output directly to your clipboard.
-- **Custom Language Selection**: Allows users to specify subtitle language with fallback options.
+---
 
-## Requirements
+## ✨ Features
 
-- Python 3.12 or higher
-- `aiohttp`
-- `orjson`
-- `aiohttp_socks`
+- **Smart Metadata Extraction**: Title, author, views, publish date, duration, tags
+- **Multi-language Subtitles**: Automatic fallback (en/US → user-specified → first available)
+- **Obsidian Integration**: Frontmatter with video details and wiki-style links
+- **Async Architecture**: Parallel processing of multiple videos
+- **Proxy Support**: SOCKS/HTTP proxies via environment variables
+- **Subtitle Processing**: XML parsing with HTML entity decoding
+- **Timecode Links**: Clickable timestamps linking to exact video moments
 
-## Installation
+---
 
-1. Clone the repository:
+## 📦 Installation
 
-   ```bash
-   git clone https://github.com/xpos587/yt2md.git
-   cd yt2md
-   ```
-
-2. Install using pip:
-
-   ```bash
-   pip install aiohttp orjson aiohttp_socks
-   ```
-
-3. Alternatively, you can run the installation script:
-
-   ```bash
-   python install.py
-   ```
-
-The script will:
-
-- Install the package in your Python environment.
-- Create a symlink in `/usr/local/bin` for global access (requires sudo).
-
-## Usage
-
-Basic usage:
-
-```bash
-yt2md <video_url_or_id> [options]
+```
+pipx install yt2md
 ```
 
-### Options
+---
 
-```sh
-positional arguments:
-  video_url_or_id        YouTube video URLs or IDs.
+## 🚀 Usage
 
-optional arguments:
-  -h, --help              Show this help message and exit.
-  -o, --output            Output file path for Markdown.
-  -cp, --clipboard        Copy the output to clipboard.
-  -l, --language          Subtitle language code (default is 'ru').
+### Basic Conversion
+
+```
+yt2md VIDEO_URL or VIDEO_ID -O output.md
 ```
 
-### Examples
+### Multiple Videos + Russian Subtitles
 
-1. Generate Markdown for a specific video:
+```
+yt2md ID1 ID2 ID3 -L ru -O vault/notes.md
+```
 
-   ```bash
-   yt2md HNXcsxO3B94 -o output.md
-   ```
+### Clipboard Integration
 
-2. Specify a subtitle language:
+```
+# Linux (Wayland)
+yt2md ID | wl-copy
 
-   ```bash
-   yt2md HNXcsxO3B94 -o output.md -l en-US
-   ```
+# Linux (X11)
+yt2md ID | xclip -selection clipboard
 
-3. Copy output directly to clipboard:
+# macOS
+yt2md ID | pbcopy
 
-   ```bash
-   yt2md HNXcsxO3B94 -cp
-   ```
+# Windows
+yt2md ID | idk?
+```
 
-4. Generate Markdown without specifying an output file (prints to console):
+---
 
-   ```bash
-   yt2md HNXcsxO3B94
-   ```
+## 🔧 Proxy Configuration
 
-## Development
+### Set Environment Variables
 
-To set up the development environment:
+```
+export HTTP_PROXY="socks5://localhost:9050"
+export HTTPS_PROXY="$HTTP_PROXY"
+```
 
-1. Create a virtual environment:
+### Usage with Proxy
 
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   ```
+```
+yt2md VIDEO_ID --language en --output research.md
+```
 
-2. Install dependencies manually as mentioned above.
+---
 
-3. Install in editable mode if you make changes:
+## 📝 Example Output
 
-   ```bash
-   pip install -e .
-   ```
+```
+---
+url: https://youtu.be/abc123
+title: "Advanced Python Techniques"
+channel: PyMaster
+views: 123,456
+duration: 15m 30s
+published: 2024-03-15T09:30:00Z
+tags: [python, programming, tutorial]
+---
 
-## License
+# Advanced Python Techniques
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+**Channel:** [[PyMaster]]
+**Published:** `2024-03-15T09:30:00Z`
+**Duration:** 15m 30s
+**Views:** 123,456
 
-## Contributing
+## Description
+Explore advanced Python features...
 
-Contributions are welcome! Please follow these steps:
+## Subtitles
+[00:01:23] Welcome to the tutorial
+[00:05:45] Context managers deep dive
+[00:10:12] Metaclass examples
+```
 
-1. Fork the repository.
-2. Create your feature branch (`git checkout -b feature/amazing-feature`).
-3. Commit your changes (`git commit -m 'Add some amazing feature'`).
-4. Push to the branch (`git push origin feature/amazing-feature`).
-5. Open a Pull Request.
+---
 
-## Authors
+## ⚙️ Technical Details
 
-- Michael [x30827pos@gmail.com](mailto:x30827pos@gmail.com)
+### Metadata Extraction
 
-## Acknowledgments
+- Parses `ytInitialPlayerResponse` JSON blob
+- Handles ISO 8601 dates and view count formatting
+- Fallback values for missing fields
 
-- Thanks to the `aiohttp`, `orjson`, and `aiohttp_socks` libraries for their support in building this tool.
+### Subtitle System
+
+1. Language priority: `specified → lang-US → en → en-US → first available`
+2. XML parsing with error handling
+3. Automatic text cleaning (HTML entities, newlines)
+
+### Performance
+
+- Async HTTP client with 3 retry attempts
+- Parallel video processing
+- Lightweight XML parser (lxml)
+
+---
+
+## 📄 License
+
+MIT License. See [LICENSE](LICENSE) for details.
+
+---
+
+👤 Author: Michael (@xpos587)  
+📧 Contact: x30827pos@gmail.com
+🐛 Issues: https://github.com/xpos587/yt2md/issues

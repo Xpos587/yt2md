@@ -1,17 +1,34 @@
 import argparse
 import asyncio
 import re
+import os
 import ssl
-import subprocess
 import xml.etree.ElementTree as ET
 from datetime import datetime
 import html
 
+import aiohttp_socks
 import aiohttp
-import orjson
-from aiohttp_socks import ProxyConnector
+import json
 
-PROXY = "http://127.0.0.1:801"
+
+def get_system_proxy():
+    """
+    Creates configuration for working with system proxies through environment variables.
+    Returns connector and parameters for the session.
+    """
+    http_proxy = os.getenv("HTTP_PROXY") or os.getenv("http_proxy")
+    https_proxy = os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
+
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+
+    if http_proxy or https_proxy:
+        proxy_url = https_proxy or http_proxy
+        return aiohttp_socks.ProxyConnector.from_url(str(proxy_url), ssl=ssl_context)
+
+    return aiohttp.TCPConnector(ssl=ssl_context)
 
 
 async def fetch(session: aiohttp.ClientSession, url: str) -> str:
@@ -22,74 +39,70 @@ async def fetch(session: aiohttp.ClientSession, url: str) -> str:
         except aiohttp.ClientError:
             if _ == 2:
                 raise
+    return ""  # This should never be reached but satisfies the return type
 
 
 async def extract_metadata(content: str) -> dict:
-    match = re.search(
-        rb"ytInitialPlayerResponse\s*=\s*({.+?})\s*;", content.encode())
+    match = re.search(rb"ytInitialPlayerResponse\s*=\s*({.+?})\s*;", content.encode())
     if not match:
         raise ValueError("JSON object not found in the content.")
 
-    json_data = orjson.loads(match.group(1))
+    json_data = json.loads(match.group(1))
     video_details = json_data.get("videoDetails", {})
-    microformat = json_data.get("microformat", {}).get(
-        "playerMicroformatRenderer", {})
+    microformat = json_data.get("microformat", {}).get("playerMicroformatRenderer", {})
 
     publish_date = microformat.get("publishDate", "N/A")
     if publish_date != "N/A":
         try:
             publish_date = datetime.fromisoformat(publish_date).strftime(
-                "%d %B %Y y., %H:%M"
+                "%Y-%m-%dT%H:%M:%SZ"
             )
         except ValueError:
             publish_date = "N/A"
 
     return {
         "title": video_details.get("title", "N/A"),
+        "author": video_details.get("author", "N/A"),
         "description": video_details.get("shortDescription", "N/A"),
         "views": int(video_details.get("viewCount", 0)),
         "publish_date": publish_date,
         "tags": video_details.get("keywords", []),
         "duration_seconds": int(video_details.get("lengthSeconds", 0)),
+        "channel": video_details.get("author", "N/A"),
     }
 
 
 async def get_subtitle_url(content: str, lang_code: str) -> str | None:
-    match = re.search(
-        rb"ytInitialPlayerResponse\s*=\s*({.+?})\s*;", content.encode())
+    match = re.search(rb"ytInitialPlayerResponse\s*=\s*({.+?})\s*;", content.encode())
     if not match:
         return None
 
-    data = orjson.loads(match.group(1))
+    data = json.loads(match.group(1))
     captions = (
         data.get("captions", {})
         .get("playerCaptionsTracklistRenderer", {})
         .get("captionTracks", [])
     )
 
-    selected_subtitle = next(
-        (c for c in captions if c.get("languageCode") == lang_code), None
-    )
+    if captions:
+        available_langs = [
+            (c.get("languageCode"), c.get("name", {}).get("simpleText"))
+            for c in captions
+        ]
+        print("Available subtitle languages:")
+        for code, name in available_langs:
+            print(f"  - {code}: {name}")
 
-    if not selected_subtitle:
-        selected_subtitle = next(
-            (c for c in captions if c.get("languageCode") == "en-US"), None
-        )
-
-    if not selected_subtitle:
-        selected_subtitle = next(
-            (c for c in captions if c.get("languageCode") == "en"), None
-        )
-
-    if not selected_subtitle:
-        selected_subtitle = next(iter(captions), None)
-
-    return selected_subtitle["baseUrl"] if selected_subtitle else None
+    lang_codes = [lang_code, f"{lang_code}-US", "en", "en-US"]
+    for code in lang_codes:
+        track = next((c for c in captions if c.get("languageCode") == code), None)
+        if track:
+            return track["baseUrl"]
+    return captions[0]["baseUrl"] if captions else None
 
 
 def clean_subtitle_text(text: str) -> str:
-    """Cleans up the subtitle text by decoding HTML entities."""
-    return html.unescape(text)
+    return html.unescape(text).replace("\n", " ")
 
 
 async def fetch_video_data(
@@ -105,15 +118,13 @@ async def fetch_video_data(
     if subtitle_url:
         subtitle_content = await fetch(session, subtitle_url)
         try:
+            root = ET.fromstring(subtitle_content)
             subtitles = [
                 {
-                    "start": float(t.get("start", 0)),
-                    "duration": float(t.get("dur", 0)),
-                    "text": clean_subtitle_text(
-                        (t.text or "").strip()
-                    ),  # Cleaned text here
+                    "start": float(text.get("start", 0)),
+                    "text": clean_subtitle_text((text.text or "").strip()),
                 }
-                for t in ET.fromstring(subtitle_content).findall(".//text")
+                for text in root.findall(".//text")
             ]
         except ET.ParseError:
             subtitles = []
@@ -128,69 +139,69 @@ def format_duration(seconds: int) -> str:
     minutes, _ = divmod(remainder, 60)
     parts = []
     if hours > 0:
-        parts.append(f"{hours} hour{'s' if hours > 1 else ''}")
+        parts.append(f"{hours}h")
     if minutes > 0:
-        parts.append(f"{minutes} minute{'s' if minutes > 1 else ''}")
-    return " ".join(parts) if parts else "0 minutes"
+        parts.append(f"{minutes}m")
+    return " ".join(parts) if parts else "0m"
+
+
+def format_time(seconds: float) -> str:
+    mins = int(seconds // 60)
+    secs = int(seconds % 60)
+    return f"{mins:02d}:{secs:02d}"
 
 
 def generate_markdown(video_data: dict) -> str:
-    md = [f"# {video_data['title']}\n"]
-    md.append(f"https://youtube.com/watch?v={video_data['video_id']}\n")
+    md = []
 
-    md.append("\n## Metadata\n")
-    md.append(f"- **Views:** {video_data['views']:,}")
-    md.append(f"- **Published:** {video_data['publish_date']}")
+    # Frontmatter
+    md.append("---")
+    md.append(f"url: https://youtu.be/{video_data['video_id']}")
+    md.append(f"title: {video_data['title']}")
+    md.append(f"channel: {video_data['channel']}")
+    md.append(f"views: {video_data['views']:,}")
+    md.append(f"duration: {format_duration(video_data['duration_seconds'])}")
+    md.append(f"published: {video_data['publish_date']}")
+    if video_data["tags"]:
+        md.append(f"tags: [{', '.join(video_data['tags'])}]")
+    md.append("---\n")
 
-    md.append(
-        f"- **Duration:** {format_duration(video_data['duration_seconds'])}")
-
-    if video_data.get("tags"):
-        md.append(f"- **Tags:** {', '.join(video_data['tags'])}")
+    # Main content
+    md.append(f"# {video_data['title']}\n")
+    md.append(f"**Channel:** [[{video_data['channel']}]]\n")
+    md.append(f"**Published:** `{video_data['publish_date']}`\n")
+    md.append(f"**Duration:** {format_duration(video_data['duration_seconds'])}\n")
+    md.append(f"**Views:** {video_data['views']:,}\n")
 
     if video_data["description"]:
         md.append("\n## Description\n")
-        md.append(video_data["description"])
+        md.append(f"{video_data['description']}\n")
 
     if video_data["subtitles"]:
         md.append("\n## Subtitles\n")
         for sub in video_data["subtitles"]:
             timestamp = int(sub["start"])
             link = f"https://youtu.be/{video_data['video_id']}?t={timestamp}"
-            formatted_time = f"{
-                int(timestamp // 60):02d}:{int(timestamp % 60):02d}"
-            md.append(f"**[{formatted_time}]({link})** {sub['text']}")
+            md.append(f"[{format_time(sub['start'])}]({link}) {sub['text']}")
 
     return "\n".join(md)
-
-
-def copy_to_clipboard(content: str) -> None:
-    try:
-        process = subprocess.Popen(["wl-copy"], stdin=subprocess.PIPE)
-        process.communicate(input=content.encode("utf-8"))
-        print("Content copied to clipboard.")
-    except FileNotFoundError:
-        print("Clipboard functionality requires 'wl-copy' to be installed.")
-    except ValueError as e:
-        print(f"Error: {e}")
 
 
 async def process_videos(
     video_ids: list[str],
     lang_code: str,
     output_file: str | None = None,
-    copy: bool = False,
 ) -> None:
     ssl_context = ssl.create_default_context()
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
 
-    async with aiohttp.ClientSession(
-        connector=ProxyConnector.from_url(PROXY, ssl=ssl_context)
-    ) as session:
-        results = await asyncio.gather(
-            *[fetch_video_data(session, video_id, lang_code) for video_id in video_ids]
-        )
+    connector = get_system_proxy()
+    async with aiohttp.ClientSession(connector=connector) as session:
+        tasks = [
+            fetch_video_data(session, video_id, lang_code) for video_id in video_ids
+        ]
+        results = await asyncio.gather(*tasks)
 
         markdown_content = "\n---\n".join(
             generate_markdown(result) for result in results
@@ -201,54 +212,22 @@ async def process_videos(
                 f.write(markdown_content)
             print(f"Markdown saved to {output_file}")
 
-        if copy:
-            copy_to_clipboard(markdown_content)
-
-        if not output_file and not copy:
+        if not output_file:
             print(markdown_content)
-
-
-def extract_video_ids(urls: list[str]) -> list[str]:
-    ids = []
-
-    for url in urls:
-        match = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})", url)
-
-        if match:
-            ids.append(match.group(1))
-
-        elif re.match(r"[a-zA-Z0-9_-]{11}$", url):
-            ids.append(url)
-
-    return ids
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert YouTube videos to Markdown.")
-
+        description="Convert YouTube videos to Obsidian-style Markdown."
+    )
     parser.add_argument("videos", nargs="+", help="YouTube video URLs or IDs.")
-
+    parser.add_argument("-O", "--output", help="Output file path for Markdown.")
     parser.add_argument(
-        "-o", "--output", help="Output file path for Markdown.")
-
-    parser.add_argument(
-        "-cp", "--clipboard", action="store_true", help="Copy the output to clipboard."
+        "-L", "--language", default="en", help="Subtitle language code (default: 'en')."
     )
-
-    parser.add_argument(
-        "-l",
-        "--language",
-        default="ru",
-        help="Subtitle language code (default is 'ru').",
-    )
-
     args = parser.parse_args()
-
-    video_ids = extract_video_ids(args.videos)
-
-    asyncio.run(process_videos(video_ids, args.language,
-                args.output, args.clipboard))
+    video_ids = re.findall(r"(?:v=|youtu\.be\/)([\w-]{11})", " ".join(args.videos))
+    asyncio.run(process_videos(video_ids, args.language, args.output))
 
 
 if __name__ == "__main__":
