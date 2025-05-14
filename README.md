@@ -137,5 +137,5 @@ MIT License. See [LICENSE](LICENSE) for details.
 ---
 
 👤 Author: Michael (@xpos587)  
-📧 Contact: x30827pos@gmail.com
-🐛 Issues: https://github.com/xpos587/yt2md/issues
+📧 Contact: [x30827pos@gmail.com](mailto:x30827pos@gmail.com)
+🐛 Issues: [https://github.com/xpos587/yt2md/issues](https://github.com/xpos587/yt2md/issues)
